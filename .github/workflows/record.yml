@@ -1,0 +1,106 @@
+name: Record Chrome
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Page/video URL to record (your own content)"
+        required: true
+      duration:
+        description: "Recording length in seconds"
+        required: true
+        default: "600"
+      click_play:
+        description: "Click center of screen once to start the player? (true/false)"
+        required: true
+        default: "true"
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TARGET_URL: ${{ github.event.inputs.url }}
+      DURATION: ${{ github.event.inputs.duration }}
+      CLICK_PLAY: ${{ github.event.inputs.click_play }}
+    steps:
+      # Real Google Chrome (has H.264/AAC codecs), not Chromium
+      - name: Install Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb ffmpeg pulseaudio pulseaudio-utils xdotool
+
+      - name: Start virtual display and audio
+        run: |
+          Xvfb :99 -screen 0 1280x720x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+          pulseaudio --start --exit-idle-time=-1
+          sleep 2
+          pactl load-module module-null-sink sink_name=vsink
+          pactl set-default-sink vsink
+          pactl list short sinks
+          sleep 1
+
+      - name: Launch Chrome
+        run: |
+          export DISPLAY=:99
+          "${{ steps.chrome.outputs.chrome-path }}" --version
+          "${{ steps.chrome.outputs.chrome-path }}" \
+            --no-sandbox \
+            --disable-dev-shm-usage \
+            --disable-gpu \
+            --window-size=1280,720 --window-position=0,0 \
+            --kiosk \
+            --autoplay-policy=no-user-gesture-required \
+            --no-first-run --no-default-browser-check \
+            --user-data-dir=/tmp/chrome-profile \
+            "$TARGET_URL" > /tmp/chrome.log 2>&1 &
+          # let the page and player load
+          sleep 15
+
+      - name: Debug screenshot (what does Chrome show?)
+        run: |
+          export DISPLAY=:99
+          ffmpeg -y -f x11grab -video_size 1280x720 -i :99 -frames:v 1 debug.png
+
+      - name: Start player (optional click)
+        if: env.CLICK_PLAY == 'true'
+        run: |
+          export DISPLAY=:99
+          xdotool mousemove 640 360 click 1
+          sleep 3
+
+      - name: Record
+        run: |
+          export DISPLAY=:99
+          ffmpeg -y -f x11grab -video_size 1280x720 -framerate 30 -i :99 \
+            -f pulse -i vsink.monitor \
+            -t "$DURATION" \
+            -c:v libx264 -preset veryfast -pix_fmt yuv420p \
+            -c:a aac -b:a 128k \
+            -movflags +faststart \
+            output.mp4
+
+      - name: Upload recording
+        uses: actions/upload-artifact@v4
+        with:
+          name: recording
+          path: output.mp4
+          retention-days: 7
+
+      - name: Upload debug files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug
+          path: |
+            debug.png
+            /tmp/chrome.log
+          retention-days: 3
+          if-no-files-found: ignore
