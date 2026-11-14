@@ -148,6 +148,15 @@ def start_display_and_audio():
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def click_play():
+    x = int(os.environ.get("CLICK_X", WIDTH // 2))
+    y = int(os.environ.get("CLICK_Y", HEIGHT // 2))
+    subprocess.run(["xdotool", "mousemove", str(x), str(y)])
+    time.sleep(0.5)
+    subprocess.run(["xdotool", "click", "1"])
+    log(f"Clicked at {x},{y}")
+
+
 def start_browser(url):
     profile = "/tmp/chrome-profile"
     shutil.rmtree(profile, ignore_errors=True)
@@ -188,7 +197,7 @@ def start_ffmpeg(rtmp_urls, secrets):
     gop = FPS * 2
     cmd = [
         "ffmpeg", "-hide_banner", "-loglevel", "warning",
-        "-f", "x11grab", "-framerate", str(FPS), "-video_size", f"{WIDTH}x{HEIGHT}",
+        "-f", "x11grab", "-draw_mouse", "0", "-framerate", str(FPS), "-video_size", f"{WIDTH}x{HEIGHT}",
         "-i", f"{DISPLAY}.0",
         "-f", "pulse", "-i", f"{SINK}.monitor",
         "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
@@ -222,6 +231,7 @@ def main():
     ap.add_argument("--raw-key", help="Raw stream key(s), comma separated")
     ap.add_argument("--retries", type=int, default=0, help="Max reconnects (0 = unlimited)")
     ap.add_argument("--dry-run", action="store_true", help="Check the key names and exit")
+    ap.add_argument("--click", action="store_true", help="Click the page center after load (to press a Play button)")
     args = ap.parse_args()
 
     if not args.url.startswith(("http://", "https://")):
@@ -236,7 +246,7 @@ def main():
         print(f"OK: {len(keys)} output(s): {names}")
         return
 
-    for b in ("Xvfb", "ffmpeg", "pulseaudio", "pactl"):
+    for b in ("Xvfb", "ffmpeg", "pulseaudio", "pactl") + (("xdotool",) if args.click else ()):
         need(b)
     find_chromium()
 
@@ -248,6 +258,9 @@ def main():
     log(f"Browser opened: {args.url}")
     log(f"Streaming to {len(keys)} output(s): {names}")
     time.sleep(6)  # let the page load
+    if args.click:
+        click_play()
+        time.sleep(2)
 
     attempt = 0
     while not stopping:
