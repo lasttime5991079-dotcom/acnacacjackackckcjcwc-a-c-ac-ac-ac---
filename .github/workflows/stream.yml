@@ -1,0 +1,38 @@
+name: Stream to ok.ru
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Page URL to broadcast"
+        required: true
+      key:
+        description: "Key name from KEYS_JSON (e.g. 1.2, s2.5)"
+        required: true
+        default: "1"
+      hours:
+        description: "How many hours to stream (max 5.5)"
+        required: true
+        default: "5"
+
+jobs:
+  stream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg xvfb pulseaudio pulseaudio-utils
+
+      - name: Stream
+        env:
+          KEYS_JSON: ${{ secrets.KEYS_JSON }}
+          STREAM_URL: ${{ inputs.url }}
+          STREAM_KEY: ${{ inputs.key }}
+          HOURS: ${{ inputs.hours }}
+        run: |
+          printf '%s' "$KEYS_JSON" > keys.json
+          timeout "${HOURS}h" python3 stream.py --url "$STREAM_URL" --key "$STREAM_KEY" || [ $? -eq 124 ]
