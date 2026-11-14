@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg xvfb pulseaudio pulseaudio-utils
+           sudo apt-get install -y --no-install-recommends ffmpeg xvfb pulseaudio pulseaudio-utils xdotool
 
       - name: Stream
         env:
@@ -33,4 +33,4 @@ jobs:
           STREAM_KEY: ${{ inputs.key }}
           HOURS: ${{ inputs.hours }}
         run: |
-          timeout "${HOURS}h" python3 stream.py --url "$STREAM_URL" --key "$STREAM_KEY" || [ $? -eq 124 ]
+           timeout "${HOURS}h" python3 stream.py --url "$STREAM_URL" --key "$STREAM_KEY" --click || [ $? -eq 124 ]
